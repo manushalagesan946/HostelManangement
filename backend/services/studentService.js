@@ -1,0 +1,1 @@
+// Student service placeholder\n// Add student business logic here\n\nconst studentService = {\n    // TODO: implement student service methods\n};\n\nexport default studentService;

@@ -1,0 +1,63 @@
+import { execute } from "../config/db.js";
+
+const submitBooking = async (studentId, roomId) => {
+
+    await execute(
+        `
+        BEGIN
+            hostel_package.submit_booking_request(
+                :studentId,
+                :roomId
+            );
+        END;
+        `,
+        {
+            studentId,
+            roomId
+        },
+        {
+            autoCommit: true
+        }
+    );
+
+};
+const getPendingBookings = async () => {
+
+    const result = await execute(
+        `
+        SELECT
+            br.REQUEST_ID        AS "requestId",
+            sd.STUDENT_ID        AS "studentId",
+            u.NAME               AS "studentName",
+            sd.REGISTER_NO       AS "registerNo",
+            sd.DEPARTMENT        AS "department",
+            r.ROOM_ID            AS "roomId",
+            r.ROOM_NUMBER        AS "roomNumber",
+            b.BLOCK_NAME         AS "blockName",
+            br.REQUEST_STATUS    AS "requestStatus"
+        FROM BOOKING_REQUESTS br
+
+        JOIN STUDENT_DETAILS sd
+            ON br.STUDENT_ID = sd.STUDENT_ID
+
+        JOIN USERS u
+            ON sd.USER_ID = u.USER_ID
+
+        JOIN ROOMS r
+            ON br.ROOM_ID = r.ROOM_ID
+
+        JOIN BLOCKS b
+            ON r.BLOCK_ID = b.BLOCK_ID
+
+        WHERE br.REQUEST_STATUS = 'Pending'
+
+        ORDER BY br.REQUEST_ID
+        `
+    );
+
+    return result.rows;
+};
+export default {
+    submitBooking,
+    getPendingBookings
+};

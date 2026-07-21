@@ -1,0 +1,1 @@
+// Payment service placeholder\n// Add payment business logic here\n\nconst paymentService = {\n    // TODO: implement payment service methods\n};\n\nexport default paymentService;

@@ -10,8 +10,7 @@ CREATE OR REPLACE PACKAGE hostel_package AS
     );
 
     PROCEDURE make_payment(
-        p_request_id IN NUMBER,
-        p_amount IN NUMBER
+        p_request_id IN NUMBER
     );
 
     PROCEDURE reject_request(
@@ -85,95 +84,136 @@ CREATE OR REPLACE PACKAGE BODY hostel_package AS
     -- Make Payment
     ------------------------------------------------------------------
     PROCEDURE make_payment (
-        p_request_id IN NUMBER,
-        p_amount IN NUMBER
+    p_request_id IN NUMBER
     )
     AS
-        v_receipt VARCHAR2(50);
+        v_receipt        VARCHAR2(50);
+        v_amount         ROOMS.FEE%TYPE;
+        v_request_status BOOKING_REQUESTS.REQUEST_STATUS%TYPE;
+        v_payment_status BOOKING_REQUESTS.PAYMENT_STATUS%TYPE;
     BEGIN
 
-        v_receipt := 'RCPT-' || TO_CHAR(seq_payment.NEXTVAL);
+    -- Get booking status
+    SELECT REQUEST_STATUS,
+           PAYMENT_STATUS
+    INTO v_request_status,
+         v_payment_status
+    FROM BOOKING_REQUESTS
+    WHERE REQUEST_ID = p_request_id;
 
-        INSERT INTO PAYMENTS (
-            payment_id,
-            request_id,
-            amount,
-            payment_date,
-            receipt_number
-        )
-        VALUES (
-            seq_payment.CURRVAL,
-            p_request_id,
-            p_amount,
-            SYSDATE,
-            v_receipt
+    -- Only pending requests can be paid
+    IF v_request_status <> 'Pending' THEN
+        RAISE_APPLICATION_ERROR(
+            -20020,
+            'Only pending booking requests can be paid.'
         );
+    END IF;
 
-        UPDATE BOOKING_REQUESTS
-        SET payment_status = 'Paid'
-        WHERE request_id = p_request_id;
+    -- Prevent duplicate payment
+    IF v_payment_status = 'Paid' THEN
+        RAISE_APPLICATION_ERROR(
+            -20021,
+            'Payment already completed.'
+        );
+    END IF;
 
-        COMMIT;
+    -- Get room fee
+    SELECT r.FEE
+    INTO v_amount
+    FROM BOOKING_REQUESTS br
+    JOIN ROOMS r
+      ON br.ROOM_ID = r.ROOM_ID
+    WHERE br.REQUEST_ID = p_request_id;
 
+    v_receipt := 'RCPT-' || TO_CHAR(seq_payment.NEXTVAL);
+
+    INSERT INTO PAYMENTS
+    (
+        PAYMENT_ID,
+        REQUEST_ID,
+        AMOUNT,
+        PAYMENT_DATE,
+        RECEIPT_NUMBER
+    )
+    VALUES
+    (
+        seq_payment.CURRVAL,
+        p_request_id,
+        v_amount,
+        SYSDATE,
+        v_receipt
+    );
+
+    UPDATE BOOKING_REQUESTS
+    SET PAYMENT_STATUS = 'Paid'
+    WHERE REQUEST_ID = p_request_id;
+
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE_APPLICATION_ERROR(
+                -20022,
+                'Booking request not found.'
+            );
     END make_payment;
 
     ------------------------------------------------------------------
     -- Approve Request
     ------------------------------------------------------------------
     PROCEDURE approve_request (
-        p_request_id IN NUMBER
+    p_request_id IN NUMBER
     )
     AS
-        v_room_id         ROOMS.room_id%TYPE;
-        v_capacity        ROOMS.capacity%TYPE;
-        v_occupied        ROOMS.occupied_count%TYPE;
-        v_payment_status  BOOKING_REQUESTS.payment_status%TYPE;
-        v_request_status  BOOKING_REQUESTS.request_status%TYPE;
+    v_room_id         ROOMS.ROOM_ID%TYPE;
+    v_capacity        ROOMS.CAPACITY%TYPE;
+    v_occupied        ROOMS.OCCUPIED_COUNT%TYPE;
+    v_payment_status  BOOKING_REQUESTS.PAYMENT_STATUS%TYPE;
+    v_request_status  BOOKING_REQUESTS.REQUEST_STATUS%TYPE;
     BEGIN
 
-        SELECT room_id,
-               payment_status,
-               request_status
-        INTO v_room_id,
-             v_payment_status,
-             v_request_status
-        FROM BOOKING_REQUESTS
-        WHERE request_id = p_request_id;
+    SELECT ROOM_ID,
+           PAYMENT_STATUS,
+           REQUEST_STATUS
+    INTO v_room_id,
+         v_payment_status,
+         v_request_status
+    FROM BOOKING_REQUESTS
+    WHERE REQUEST_ID = p_request_id;
 
-        IF v_request_status <> 'Pending' THEN
-            RAISE_APPLICATION_ERROR(
-                -20004,
-                'Only pending requests can be approved.'
-            );
-        END IF;
+    IF v_request_status <> 'Pending' THEN
+        RAISE_APPLICATION_ERROR(
+            -20004,
+            'Only pending requests can be approved.'
+        );
+    END IF;
 
-        IF v_payment_status <> 'Paid' THEN
-            RAISE_APPLICATION_ERROR(
-                -20003,
-                'Payment has not been completed.'
-            );
-        END IF;
+    IF v_payment_status <> 'Paid' THEN
+        RAISE_APPLICATION_ERROR(
+            -20003,
+            'Payment has not been completed.'
+        );
+    END IF;
 
-        SELECT capacity,
-               occupied_count
-        INTO v_capacity,
-             v_occupied
-        FROM ROOMS
-        WHERE room_id = v_room_id;
+    SELECT CAPACITY,
+           OCCUPIED_COUNT
+    INTO v_capacity,
+         v_occupied
+    FROM ROOMS
+    WHERE ROOM_ID = v_room_id;
 
-        IF v_occupied >= v_capacity THEN
-            RAISE_APPLICATION_ERROR(
-                -20002,
-                'Room is already full.'
-            );
-        END IF;
+    IF v_occupied >= v_capacity THEN
+        RAISE_APPLICATION_ERROR(
+            -20002,
+            'Room is already full.'
+        );
+    END IF;
 
-        UPDATE BOOKING_REQUESTS
-        SET request_status='Approved'
-        WHERE request_id=p_request_id
-        AND request_status='Pending';
+    UPDATE BOOKING_REQUESTS
+    SET REQUEST_STATUS = 'Approved'
+    WHERE REQUEST_ID = p_request_id;
 
-        COMMIT;
+    UPDATE ROOMS
+    SET OCCUPIED_COUNT = OCCUPIED_COUNT + 1
+    WHERE ROOM_ID = v_room_id;
 
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
@@ -278,36 +318,37 @@ CREATE OR REPLACE PACKAGE BODY hostel_package AS
     -- Reject Request
     ------------------------------------------------------------------
     PROCEDURE reject_request (
-        p_request_id IN NUMBER
+    p_request_id IN NUMBER
     )
     AS
-        v_request_status BOOKING_REQUESTS.request_status%TYPE;
+        v_request_status BOOKING_REQUESTS.REQUEST_STATUS%TYPE;
+        v_payment_status BOOKING_REQUESTS.PAYMENT_STATUS%TYPE;
     BEGIN
 
-        SELECT request_status
-        INTO v_request_status
-        FROM BOOKING_REQUESTS
-        WHERE request_id = p_request_id;
+    SELECT REQUEST_STATUS,
+           PAYMENT_STATUS
+    INTO v_request_status,
+         v_payment_status
+    FROM BOOKING_REQUESTS
+    WHERE REQUEST_ID = p_request_id;
 
-        IF v_request_status <> 'Pending' THEN
-            RAISE_APPLICATION_ERROR(
-                -20006,
-                'Only pending requests can be rejected.'
-            );
-        END IF;
+    IF v_request_status <> 'Pending' THEN
+        RAISE_APPLICATION_ERROR(
+            -20006,
+            'Only pending requests can be rejected.'
+        );
+    END IF;
 
-        UPDATE BOOKING_REQUESTS
-        SET request_status='Rejected'
-        WHERE request_id=p_request_id;
+    UPDATE BOOKING_REQUESTS
+    SET REQUEST_STATUS = 'Rejected'
+    WHERE REQUEST_ID = p_request_id;
 
-        COMMIT;
-
-    EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            RAISE_APPLICATION_ERROR(
-                -20007,
-                'Booking request not found.'
-            );
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RAISE_APPLICATION_ERROR(
+            -20007,
+            'Booking request not found.'
+        );
     END reject_request;
 
     ------------------------------------------------------------------
@@ -419,5 +460,7 @@ BEGIN
     hostel_package.submit_booking_request(7,2);
 END;
 /
-select * from users;
+select * from booking_requests;
+select * from rooms;
+update users set password='$2b$10$LSsik1LOmMZyrvacPrWy.eaxUZ01I0auSfgKJsMujgIcUojaDYU4' where user_id=8;
 commit;

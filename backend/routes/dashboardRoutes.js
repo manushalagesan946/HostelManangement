@@ -1,19 +1,18 @@
 import express from "express";
-import studentController from "../controllers/studentController.js";
+
+import dashboardController from "../controllers/dashboardController.js";
+
 import authenticate from "../middleware/authMiddleware.js";
+
 import authorizeAdmin from "../middleware/adminMiddleware.js";
+
 const router = express.Router();
 
-router.get(
-    "/profile",
-    authenticate,
-    studentController.getProfile
-);
 router.get(
     "/",
     authenticate,
     authorizeAdmin,
-    studentController.getAllStudents
+    dashboardController.getDashboard
 );
 
 export default router;

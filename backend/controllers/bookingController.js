@@ -38,7 +38,70 @@ const getPendingBookings = asyncHandler(async (req, res) => {
     );
 
 });
+const approveBooking = asyncHandler(async (req, res) => {
+
+    const { requestId } = req.params;
+
+    await bookingService.approveBooking(Number(requestId));
+
+    res.status(200).json(
+        new ApiResponse(
+            true,
+            "Booking approved successfully",
+            null
+        )
+    );
+
+});
+const getMyBookings = asyncHandler(async (req, res) => {
+
+    const bookings = await bookingService.getMyBookings(
+        req.user.studentId
+    );
+
+    res.status(200).json(
+        new ApiResponse(
+            true,
+            "Bookings fetched successfully",
+            bookings
+        )
+    );
+
+});
+
+const rejectBooking = asyncHandler(async (req, res) => {
+
+    const { id } = req.params;
+
+    await bookingService.rejectBooking(id);
+
+    res.status(200).json(
+        new ApiResponse(
+            true,
+            "Booking rejected successfully",
+            null
+        )
+    );
+
+});
+const getAllBookings = asyncHandler(async (req, res) => {
+
+    const bookings = await bookingService.getAllBookings();
+
+    res.status(200).json(
+        new ApiResponse(
+            true,
+            "Bookings fetched successfully",
+            bookings
+        )
+    );
+
+});
 export default {
     submitBooking,
-    getPendingBookings
+    getPendingBookings,
+    approveBooking,
+    getMyBookings,
+    rejectBooking,
+    getAllBookings
 };
